@@ -3,31 +3,39 @@ package main
 import (
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"sort"
 	"strconv"
 )
 
-type ByName []fs.DirEntry
+type ByName []string
 
-func CountDir(files []fs.DirEntry, PrintFiles bool) int {
+func (f ByName) Len() int { return len(f) }
+
+func (f ByName) Less(i, j int) bool { return f[i] < f[j] }
+
+func (f ByName) Swap(i, j int) { f[i], f[j] = f[j], f[i] }
+
+func CountDir(files []string, PrintFiles bool, path string) (int, error) {
 	count := 0
 	for _, f := range files {
-		if f.IsDir() == true {
+		filename := path + "/" + f
+		file, err := os.Open(filename)
+		if err != nil {
+			return 0, err
+		}
+		info, err := file.Stat()
+		if err != nil {
+			return 0, err
+		}
+		if info.IsDir() == true {
 			count = count + 1
 		} else if PrintFiles == true {
 			count = count + 1
 		}
 	}
-	return count
+	return count, nil
 }
-
-func (f ByName) Len() int { return CountDir(f, true) }
-
-func (f ByName) Less(i, j int) bool { return f[i].Name() < f[j].Name() }
-
-func (f ByName) Swap(i, j int) { f[i], f[j] = f[j], f[i] }
 
 func RealDir(Out io.Writer, path string, printFiles bool, tab string) (err error) {
 
@@ -42,14 +50,16 @@ func RealDir(Out io.Writer, path string, printFiles bool, tab string) (err error
 	}
 
 	if info.IsDir() == true {
-		files, err := file.ReadDir(-1)
+		files, err := file.Readdirnames(0)
 		if err != nil {
 			return err
 		}
-		Count := CountDir(files, printFiles)
+		Count, err := CountDir(files, printFiles, path)
 		sort.Sort(ByName(files))
 		for _, f := range files {
-			if printFiles == false && f.IsDir() == false {
+			tempfile, err := os.Open(path + "/" + f)
+			infotemp, err := tempfile.Stat()
+			if printFiles == false && infotemp.IsDir() == false {
 				continue
 			}
 			if Count > 1 {
@@ -57,28 +67,30 @@ func RealDir(Out io.Writer, path string, printFiles bool, tab string) (err error
 			} else {
 				fmt.Fprint(Out, tab+"└───")
 			}
-			if f.IsDir() == true {
-				fmt.Fprintln(Out, f.Name())
+			if err != nil {
+				return err
+			}
+			if err != nil {
+				return err
+			}
+			if infotemp.IsDir() == true {
+				fmt.Fprintln(Out, infotemp.Name())
 				if Count > 1 {
-					err = RealDir(Out, path+"/"+f.Name(), printFiles, tab+"│\t")
+					err = RealDir(Out, path+"/"+infotemp.Name(), printFiles, tab+"│\t")
 				} else {
-					err = RealDir(Out, path+"/"+f.Name(), printFiles, tab+"\t")
+					err = RealDir(Out, path+"/"+infotemp.Name(), printFiles, tab+"\t")
 				}
 				if err != nil {
 					return err
 				}
 			} else if printFiles == true {
-				info, err := f.Info()
-				if err != nil {
-					return nil
-				}
 				var str string
-				if info.Size() == 0 {
+				if infotemp.Size() == 0 {
 					str = "(empty)"
 				} else {
-					str = "(" + strconv.Itoa(int(info.Size())) + "b)"
+					str = "(" + strconv.Itoa(int(infotemp.Size())) + "b)"
 				}
-				fmt.Fprintln(Out, f.Name(), str)
+				fmt.Fprintln(Out, infotemp.Name(), str)
 			}
 			Count = Count - 1
 		}

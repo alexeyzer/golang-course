@@ -1,17 +1,15 @@
 package main
 
 import (
+	"bufio"
 	json "encoding/json"
 	"fmt"
-	"io"
-	"io/ioutil"
-	"os"
-	"regexp"
-	"strings"
-
 	easyjson "github.com/mailru/easyjson"
 	jlexer "github.com/mailru/easyjson/jlexer"
 	jwriter "github.com/mailru/easyjson/jwriter"
+	"io"
+	"os"
+	"strings"
 	// "log"
 )
 
@@ -151,36 +149,30 @@ func (v *User) UnmarshalEasyJSON(l *jlexer.Lexer) {
 const filePath1 string = "./data/users.txt"
 
 func FastSearch(out io.Writer) {
+	var isAndroidlong bool
+	var isMSIElong bool
+	var isAndroid bool
+	var isMSIE bool
+	fmt.Fprintln(out, "found users:")
 	file, err := os.Open(filePath1)
 	if err != nil {
 		panic(err)
 	}
-	fileContents, err := ioutil.ReadAll(file)
-	if err != nil {
-		panic(err)
-	}
-	lines := strings.Split(string(fileContents), "\n")
-	users := []User{}
-	for _, line := range lines {
-
-		user := User{}
-		err := user.UnmarshalJSON([]byte(line))
+	i := 0
+	uniqueBrowsers := 0
+	seenBrowsersmap := make(map[string]int)
+	scanner := bufio.NewScanner(file)
+	user := User{}
+	for scanner.Scan() {
+		err := user.UnmarshalJSON([]byte(scanner.Text()))
 		if err != nil {
 			panic(err)
 		}
-		users = append(users, user)
-	}
-	uniqueBrowsers := 0
-	seenBrowsers := []string{}
-	foundUsers := ""
-	r := regexp.MustCompile("@")
-	for i, user := range users {
-		isAndroidlong := false
-		isMSIElong := false
+		isAndroidlong = false
+		isMSIElong = false
 		for _, browser := range user.Browsers {
-			isAndroid := false
-			isMSIE := false
-			notSeenBefore := true
+			isAndroid = false
+			isMSIE = false
 			if strings.Contains(browser, "MSIE") {
 				isMSIE = true
 				isMSIElong = true
@@ -190,24 +182,19 @@ func FastSearch(out io.Writer) {
 				isAndroidlong = true
 			}
 			if isAndroid || isMSIE {
-				for _, item := range seenBrowsers {
-					if item == browser {
-						notSeenBefore = false
-					}
-				}
-				if notSeenBefore == true {
-					seenBrowsers = append(seenBrowsers, browser)
+				if seenBrowsersmap[browser] == 0 {
+					seenBrowsersmap[browser] = 1
 					uniqueBrowsers++
 				}
 			}
 		}
 		if isAndroidlong && isMSIElong {
-			foundUsers += fmt.Sprintf("[%d] %s <%s>\n", i, user.Name, r.ReplaceAllString(user.Email, " [at] "))
+			fmt.Fprint(out, fmt.Sprintf("[%d] %s <%s>\n", i, user.Name, strings.Replace(user.Email, "@", " [at] ", -1)))
 			isAndroidlong = false
 			isMSIElong = false
 		}
-		//fmt.Printf("\n")
+		i = i + 1
 	}
-	fmt.Fprintln(out, "found users:\n"+foundUsers)
-	fmt.Fprintln(out, "Total unique browsers", len(seenBrowsers))
+
+	fmt.Fprintln(out, "\nTotal unique browsers", uniqueBrowsers)
 }
